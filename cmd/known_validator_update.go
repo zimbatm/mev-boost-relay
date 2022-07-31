@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"github.com/flashbots/boost-relay/beaconclient"
 	"github.com/flashbots/boost-relay/common"
 	"github.com/flashbots/boost-relay/datastore"
@@ -59,8 +60,9 @@ var knownValidatorUpdateCmd = &cobra.Command{
 		log.Infof("Using beacon endpoint: %s", beaconNodeURI)
 		beaconClient := beaconclient.NewProdBeaconClient(log, beaconNodeURI)
 
+		ctx := context.Background()
 		// Check beacon node status
-		_, err = beaconClient.SyncStatus()
+		_, err = beaconClient.SyncStatus(ctx)
 		if err != nil {
 			log.WithError(err).Fatal("error checking beacon-node sync status")
 		}
@@ -77,7 +79,7 @@ var knownValidatorUpdateCmd = &cobra.Command{
 
 		// Query beacon node for known validators
 		log.Info("Querying validators from beacon node... (this may take a while)")
-		validators, err := beaconClient.FetchValidators()
+		validators, err := beaconClient.FetchValidators(ctx)
 		if err != nil {
 			log.WithError(err).Fatal("failed to fetch validators from beacon node")
 		}
@@ -90,7 +92,7 @@ var knownValidatorUpdateCmd = &cobra.Command{
 		var last beaconclient.ValidatorResponseEntry
 		for _, v := range validators {
 			last = v
-			err = redis.SetKnownValidator(types.PubkeyHex(v.Validator.Pubkey), v.Index)
+			err = redis.SetKnownValidator(ctx, types.PubkeyHex(v.Validator.Pubkey), v.Index)
 			if err != nil {
 				log.WithError(err).WithField("pubkey", v.Validator.Pubkey).Fatal("failed to set known validator in Redis")
 			}

@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"context"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -33,14 +34,15 @@ func TestProdProposerValidatorRegistration(t *testing.T) {
 
 	key := types.NewPubkeyHex(reg1.Message.Pubkey.String())
 
+	ctx := context.Background()
 	// Set known validator and save registration
-	err := ds.redis.SetKnownValidator(key, 1)
+	err := ds.redis.SetKnownValidator(ctx, key, 1)
 	require.NoError(t, err)
-	err = ds.redis.SetValidatorRegistration(reg1)
+	err = ds.redis.SetValidatorRegistration(ctx, reg1)
 	require.NoError(t, err)
 
 	// Check if validator is known
-	cnt, err := ds.RefreshKnownValidators()
+	cnt, err := ds.RefreshKnownValidators(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, cnt)
 	require.True(t, ds.IsKnownValidator(key))

@@ -51,9 +51,9 @@ func PubkeyHexToLowerStr(pk types.PubkeyHex) string {
 	return strings.ToLower(string(pk))
 }
 
-func (r *RedisCache) GetKnownValidators() (map[types.PubkeyHex]uint64, error) {
+func (r *RedisCache) GetKnownValidators(ctx context.Context) (map[types.PubkeyHex]uint64, error) {
 	validators := make(map[types.PubkeyHex]uint64)
-	entries, err := r.client.HGetAll(context.Background(), r.keyKnownValidators).Result()
+	entries, err := r.client.HGetAll(ctx, r.keyKnownValidators).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -67,13 +67,13 @@ func (r *RedisCache) GetKnownValidators() (map[types.PubkeyHex]uint64, error) {
 	return validators, nil
 }
 
-func (r *RedisCache) SetKnownValidator(pubkeyHex types.PubkeyHex, proposerIndex uint64) error {
-	return r.client.HSet(context.Background(), r.keyKnownValidators, PubkeyHexToLowerStr(pubkeyHex), proposerIndex).Err()
+func (r *RedisCache) SetKnownValidator(ctx context.Context, pubkeyHex types.PubkeyHex, proposerIndex uint64) error {
+	return r.client.HSet(ctx, r.keyKnownValidators, PubkeyHexToLowerStr(pubkeyHex), proposerIndex).Err()
 }
 
-func (r *RedisCache) GetValidatorRegistration(proposerPubkey types.PubkeyHex) (*types.SignedValidatorRegistration, error) {
+func (r *RedisCache) GetValidatorRegistration(ctx context.Context, proposerPubkey types.PubkeyHex) (*types.SignedValidatorRegistration, error) {
 	registration := new(types.SignedValidatorRegistration)
-	value, err := r.client.HGet(context.Background(), r.keyValidatorRegistration, strings.ToLower(proposerPubkey.String())).Result()
+	value, err := r.client.HGet(ctx, r.keyValidatorRegistration, strings.ToLower(proposerPubkey.String())).Result()
 	if err == redis.Nil {
 		return nil, nil
 	} else if err != nil {
@@ -84,16 +84,16 @@ func (r *RedisCache) GetValidatorRegistration(proposerPubkey types.PubkeyHex) (*
 	return registration, err
 }
 
-func (r *RedisCache) GetValidatorRegistrationTimestamp(proposerPubkey types.PubkeyHex) (uint64, error) {
-	timestamp, err := r.client.HGet(context.Background(), r.keyValidatorRegistrationTimestamp, strings.ToLower(proposerPubkey.String())).Uint64()
+func (r *RedisCache) GetValidatorRegistrationTimestamp(ctx context.Context, proposerPubkey types.PubkeyHex) (uint64, error) {
+	timestamp, err := r.client.HGet(ctx, r.keyValidatorRegistrationTimestamp, strings.ToLower(proposerPubkey.String())).Uint64()
 	if err == redis.Nil {
 		return 0, nil
 	}
 	return timestamp, err
 }
 
-func (r *RedisCache) SetValidatorRegistration(entry types.SignedValidatorRegistration) error {
-	err := r.client.HSet(context.Background(), r.keyValidatorRegistrationTimestamp, strings.ToLower(entry.Message.Pubkey.PubkeyHex().String()), entry.Message.Timestamp).Err()
+func (r *RedisCache) SetValidatorRegistration(ctx context.Context, entry types.SignedValidatorRegistration) error {
+	err := r.client.HSet(ctx, r.keyValidatorRegistrationTimestamp, strings.ToLower(entry.Message.Pubkey.PubkeyHex().String()), entry.Message.Timestamp).Err()
 	if err != nil {
 		return err
 	}
@@ -103,13 +103,13 @@ func (r *RedisCache) SetValidatorRegistration(entry types.SignedValidatorRegistr
 		return err
 	}
 
-	err = r.client.HSet(context.Background(), r.keyValidatorRegistration, strings.ToLower(entry.Message.Pubkey.PubkeyHex().String()), marshalledValue).Err()
+	err = r.client.HSet(ctx, r.keyValidatorRegistration, strings.ToLower(entry.Message.Pubkey.PubkeyHex().String()), marshalledValue).Err()
 	return err
 }
 
-func (r *RedisCache) SetValidatorRegistrations(entries []types.SignedValidatorRegistration) error {
+func (r *RedisCache) SetValidatorRegistrations(ctx context.Context, entries []types.SignedValidatorRegistration) error {
 	for _, entry := range entries {
-		err := r.SetValidatorRegistration(entry)
+		err := r.SetValidatorRegistration(ctx, entry)
 		if err != nil {
 			return err
 		}
@@ -117,6 +117,6 @@ func (r *RedisCache) SetValidatorRegistrations(entries []types.SignedValidatorRe
 	return nil
 }
 
-func (r *RedisCache) NumRegisteredValidators() (int64, error) {
-	return r.client.HLen(context.Background(), r.keyValidatorRegistrationTimestamp).Result()
+func (r *RedisCache) NumRegisteredValidators(ctx context.Context) (int64, error) {
+	return r.client.HLen(ctx, r.keyValidatorRegistrationTimestamp).Result()
 }

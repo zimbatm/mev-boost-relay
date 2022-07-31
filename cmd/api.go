@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -117,6 +121,21 @@ var apiCmd = &cobra.Command{
 
 		// Start the server
 		log.Infof("Webserver starting on %s ...", apiListenAddr)
-		log.Fatal(srv.StartServer())
+
+		// Handle graceful shutdown
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{}, 1)
+		go func() {
+			shutdown := make(chan os.Signal, 1)
+			signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+			<-shutdown
+			signal.Stop(shutdown)
+
+			log.Info("Shutting down....")
+			cancel()
+			close(done)
+		}()
+		log.Fatal(srv.StartServer(ctx))
+		<-done
 	},
 }

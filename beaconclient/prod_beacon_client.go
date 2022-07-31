@@ -1,6 +1,7 @@
 package beaconclient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -28,23 +29,33 @@ type HeadEventData struct {
 	Slot uint64 `json:",string"`
 }
 
-func (c *ProdBeaconClient) SubscribeToHeadEvents(slotC chan uint64) {
+func (c *ProdBeaconClient) SubscribeToHeadEvents(ctx context.Context, slotC chan uint64) {
 	eventsURL := fmt.Sprintf("%s/eth/v1/events?topics=head", c.beaconURI)
 	client := sse.NewClient(eventsURL)
-	client.SubscribeRaw(func(msg *sse.Event) {
-		var data HeadEventData
-		err := json.Unmarshal(msg.Data, &data)
+	event := make(chan *sse.Event)
+	go func() {
+		if err := client.SubscribeChanRawWithContext(ctx, event); err != nil {
+			close(event)
+			close(slotC)
+			return
+		}
+	}()
+
+	for msg := range event {
+		data := new(HeadEventData)
+		err := json.Unmarshal(msg.Data, data)
 		if err != nil {
 			c.log.WithError(err).Error("could not unmarshal head event")
 		} else {
 			slotC <- data.Slot
 		}
-	})
+	}
+
 	c.log.Warn("beaconclient SubscribeToHeadEvents: end of function!")
 }
 
-func (c *ProdBeaconClient) FetchValidators() (map[types.PubkeyHex]ValidatorResponseEntry, error) {
-	vd, err := fetchAllValidators(c.beaconURI)
+func (c *ProdBeaconClient) FetchValidators(ctx context.Context) (map[types.PubkeyHex]ValidatorResponseEntry, error) {
+	vd, err := fetchAllValidators(ctx, c.beaconURI)
 	if err != nil {
 		return nil, err
 	}
@@ -72,12 +83,12 @@ type AllValidatorsResponse struct {
 	Data []ValidatorResponseEntry
 }
 
-func fetchAllValidators(endpoint string) (*AllValidatorsResponse, error) {
+func fetchAllValidators(ctx context.Context, endpoint string) (*AllValidatorsResponse, error) {
 	uri := endpoint + "/eth/v1/beacon/states/head/validators?status=active,pending"
 
 	// https://ethereum.github.io/beacon-APIs/#/Beacon/getStateValidators
 	vd := new(AllValidatorsResponse)
-	err := fetchBeacon(uri, "GET", vd)
+	err := fetchBeacon(ctx, uri, "GET", vd)
 	return vd, err
 }
 
@@ -94,18 +105,18 @@ type SyncStatusPayloadData struct {
 
 // SyncStatus returns the current node sync-status
 // https://ethereum.github.io/beacon-APIs/#/ValidatorRequiredApi/getSyncingStatus
-func (c *ProdBeaconClient) SyncStatus() (*SyncStatusPayloadData, error) {
+func (c *ProdBeaconClient) SyncStatus(ctx context.Context) (*SyncStatusPayloadData, error) {
 	uri := c.beaconURI + "/eth/v1/node/syncing"
 	resp := new(SyncStatusPayload)
-	err := fetchBeacon(uri, "GET", resp)
+	err := fetchBeacon(ctx, uri, "GET", resp)
 	if err != nil {
 		return nil, err
 	}
 	return &resp.Data, nil
 }
 
-func (c *ProdBeaconClient) CurrentSlot() (uint64, error) {
-	syncStatus, err := c.SyncStatus()
+func (c *ProdBeaconClient) CurrentSlot(ctx context.Context) (uint64, error) {
+	syncStatus, err := c.SyncStatus(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -123,9 +134,9 @@ type ProposerDutiesResponseData struct {
 
 // GetProposerDuties returns proposer duties for every slot in this epoch
 // https://ethereum.github.io/beacon-APIs/#/Validator/getProposerDuties
-func (c *ProdBeaconClient) GetProposerDuties(epoch uint64) (*ProposerDutiesResponse, error) {
+func (c *ProdBeaconClient) GetProposerDuties(ctx context.Context, epoch uint64) (*ProposerDutiesResponse, error) {
 	uri := fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", c.beaconURI, epoch)
 	resp := new(ProposerDutiesResponse)
-	err := fetchBeacon(uri, "GET", resp)
+	err := fetchBeacon(ctx, uri, "GET", resp)
 	return resp, err
 }

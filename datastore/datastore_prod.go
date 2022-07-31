@@ -1,6 +1,7 @@
 package datastore
 
 import (
+	"context"
 	"strings"
 	"sync"
 
@@ -37,8 +38,8 @@ func NewProdDatastore(redisCache *RedisCache) *ProdDatastore {
 }
 
 // RefreshKnownValidators loads known validators from Redis into memory
-func (ds *ProdDatastore) RefreshKnownValidators() (cnt int, err error) {
-	knownValidators, err := ds.redis.GetKnownValidators()
+func (ds *ProdDatastore) RefreshKnownValidators(ctx context.Context) (cnt int, err error) {
+	knownValidators, err := ds.redis.GetKnownValidators(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -75,22 +76,22 @@ func (ds *ProdDatastore) NumKnownValidators() int {
 	return len(ds.knownValidatorsByIndex)
 }
 
-func (ds *ProdDatastore) NumRegisteredValidators() (int64, error) {
-	return ds.redis.NumRegisteredValidators()
+func (ds *ProdDatastore) NumRegisteredValidators(ctx context.Context) (int64, error) {
+	return ds.redis.NumRegisteredValidators(ctx)
 }
 
 // GetValidatorRegistration returns the validator registration for the given proposerPubkey. If not found then it returns (nil, nil). If
 // there's a datastore error, then an error will be returned.
-func (ds *ProdDatastore) GetValidatorRegistration(pubkeyHex types.PubkeyHex) (*types.SignedValidatorRegistration, error) {
-	return ds.redis.GetValidatorRegistration(pubkeyHex)
+func (ds *ProdDatastore) GetValidatorRegistration(ctx context.Context, pubkeyHex types.PubkeyHex) (*types.SignedValidatorRegistration, error) {
+	return ds.redis.GetValidatorRegistration(ctx, pubkeyHex)
 }
 
-func (ds *ProdDatastore) GetValidatorRegistrationTimestamp(pubkeyHex types.PubkeyHex) (uint64, error) {
-	return ds.redis.GetValidatorRegistrationTimestamp(pubkeyHex)
+func (ds *ProdDatastore) GetValidatorRegistrationTimestamp(ctx context.Context, pubkeyHex types.PubkeyHex) (uint64, error) {
+	return ds.redis.GetValidatorRegistrationTimestamp(ctx, pubkeyHex)
 }
 
-func (ds *ProdDatastore) SetValidatorRegistration(entry types.SignedValidatorRegistration) error {
-	return ds.redis.SetValidatorRegistration(entry)
+func (ds *ProdDatastore) SetValidatorRegistration(ctx context.Context, entry types.SignedValidatorRegistration) error {
+	return ds.redis.SetValidatorRegistration(ctx, entry)
 }
 
 func (ds *ProdDatastore) SaveBidAndBlock(slot uint64, proposerPubkey string, headerResp *types.GetHeaderResponse, payloadResp *types.GetPayloadResponse) error {

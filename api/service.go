@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -210,7 +211,7 @@ func (api *RelayAPI) getRouter() http.Handler {
 
 // startValidatorRegistrationWorkers starts a number of worker goroutines to handle the expensive part
 // of (already sanity-checked) validator registrations: the signature verification and updating in Redis.
-func (api *RelayAPI) startValidatorRegistrationWorkers() error {
+func (api *RelayAPI) startValidatorRegistrationWorkers(ctx context.Context) error {
 	if api.regValWorkersStarted.Swap(true) {
 		return errors.New("validator registration workers already started")
 	}
@@ -224,8 +225,8 @@ func (api *RelayAPI) startValidatorRegistrationWorkers() error {
 
 	for i := 0; i < numWorkers; i++ {
 		go func() {
-			for {
-				registration := <-api.regValEntriesC
+
+			for registration := range api.regValEntriesC {
 
 				// Verify the signature
 				ok, err := types.VerifySignature(registration.Message, api.domainBuilder, registration.Message.Pubkey[:], registration.Signature[:])
@@ -236,7 +237,7 @@ func (api *RelayAPI) startValidatorRegistrationWorkers() error {
 
 				// Save the registration
 				go func() {
-					err := api.datastore.SetValidatorRegistration(registration)
+					err := api.datastore.SetValidatorRegistration(ctx, registration)
 					if err != nil {
 						api.log.WithError(err).WithField("registration", fmt.Sprintf("%+v", registration)).Error("error updating validator registration")
 					}
@@ -248,13 +249,13 @@ func (api *RelayAPI) startValidatorRegistrationWorkers() error {
 }
 
 // StartServer starts the HTTP server for this instance
-func (api *RelayAPI) StartServer() (err error) {
+func (api *RelayAPI) StartServer(ctx context.Context) (err error) {
 	if api.srvStarted.Swap(true) {
 		return errors.New("server was already started")
 	}
 
 	// Check beacon-node sync status, process current slot and start slot updates
-	syncStatus, err := api.beaconClient.SyncStatus()
+	syncStatus, err := api.beaconClient.SyncStatus(ctx)
 	if err != nil {
 		return err
 	}
@@ -263,10 +264,10 @@ func (api *RelayAPI) StartServer() (err error) {
 	}
 
 	// Start worker pool for validator registration processing
-	api.startValidatorRegistrationWorkers()
+	api.startValidatorRegistrationWorkers(ctx)
 
 	// Update list of known validators, and start refresh loop
-	cnt, err := api.datastore.RefreshKnownValidators()
+	cnt, err := api.datastore.RefreshKnownValidators(ctx)
 	if err != nil {
 		return err
 	} else if cnt == 0 {
@@ -274,24 +275,23 @@ func (api *RelayAPI) StartServer() (err error) {
 	} else {
 		api.log.WithField("cnt", cnt).Info("updated known validators")
 	}
-	go api.startKnownValidatorUpdates()
+	go api.startKnownValidatorUpdates(ctx)
 
 	// Process current slot
 	headSlot := syncStatus.HeadSlot
-	api.processNewSlot(headSlot)
+	api.processNewSlot(ctx, headSlot)
 
 	// Start regular slot updates
 	go func() {
 		c := make(chan uint64)
-		go api.beaconClient.SubscribeToHeadEvents(c)
-		for {
-			headSlot := <-c
-			api.processNewSlot(headSlot)
+		go api.beaconClient.SubscribeToHeadEvents(ctx, c) //TODO: do we want to exit if subscriber returns err
+		for headSlot := range c {
+			api.processNewSlot(ctx, headSlot)
 		}
 	}()
 
 	// Update HTML data before starting server
-	api.updateStatusHTMLData()
+	api.updateStatusHTMLData(ctx)
 
 	api.srv = &http.Server{
 		Addr:    api.opts.ListenAddr,
@@ -303,23 +303,18 @@ func (api *RelayAPI) StartServer() (err error) {
 		IdleTimeout:       3 * time.Second,
 	}
 
-	err = api.srv.ListenAndServe()
-	if err == http.ErrServerClosed {
+	if err = api.srv.ListenAndServe(); err == http.ErrServerClosed {
 		return nil
 	}
 	return err
 }
 
 // Stop: TODO: use context everywhere to quit background tasks as well
-// func (api *RelayAPI) Stop() error {
-// 	if !api.srvStarted.Load() {
-// 		return nil
-// 	}
-// 	defer api.srvStarted.Store(false)
-// 	return api.srv.Close()
-// }
+func (api *RelayAPI) Stop() {
+	api.srv.Shutdown(context.Background())
+}
 
-func (api *RelayAPI) processNewSlot(headSlot uint64) {
+func (api *RelayAPI) processNewSlot(ctx context.Context, headSlot uint64) {
 	if headSlot <= api.headSlot {
 		return
 	}
@@ -339,18 +334,18 @@ func (api *RelayAPI) processNewSlot(headSlot uint64) {
 	}
 
 	// Update HTML data once per slot
-	go api.updateStatusHTMLData()
+	go api.updateStatusHTMLData(ctx)
 
 	// Update proposer duties in the background
 	go func() {
-		err := api.updateProposerDuties(currentEpoch)
+		err := api.updateProposerDuties(ctx, currentEpoch)
 		if err != nil {
 			api.log.WithError(err).WithField("epoch", currentEpoch).Error("failed to update proposer duties")
 		}
 	}()
 }
 
-func (api *RelayAPI) updateProposerDuties(epoch uint64) error {
+func (api *RelayAPI) updateProposerDuties(ctx context.Context, epoch uint64) error {
 	// Do nothing if already checked this epoch
 	if epoch <= api.proposerDutiesEpoch {
 		return nil
@@ -369,7 +364,7 @@ func (api *RelayAPI) updateProposerDuties(epoch uint64) error {
 	})
 	log.Debug("updating proposer duties...")
 
-	r, err := api.beaconClient.GetProposerDuties(epoch)
+	r, err := api.beaconClient.GetProposerDuties(ctx, epoch)
 	if err != nil {
 		return err
 	}
@@ -377,7 +372,7 @@ func (api *RelayAPI) updateProposerDuties(epoch uint64) error {
 	entries := r.Data
 
 	if api.enableQueryProposerDutiesForNextEpoch {
-		r2, err := api.beaconClient.GetProposerDuties(epoch + 1)
+		r2, err := api.beaconClient.GetProposerDuties(ctx, epoch+1)
 		if err != nil {
 			return err
 		}
@@ -394,7 +389,7 @@ func (api *RelayAPI) updateProposerDuties(epoch uint64) error {
 	c := make(chan result, len(entries))
 	for i := 0; i < cap(c); i++ {
 		go func(duty beaconclient.ProposerDutiesResponseData) {
-			reg, err := api.datastore.GetValidatorRegistration(types.NewPubkeyHex(duty.Pubkey))
+			reg, err := api.datastore.GetValidatorRegistration(ctx, types.NewPubkeyHex(duty.Pubkey))
 			c <- result{types.BuilderGetValidatorsResponseEntry{
 				Slot:  duty.Slot,
 				Entry: reg,
@@ -421,13 +416,13 @@ func (api *RelayAPI) updateProposerDuties(epoch uint64) error {
 	return nil
 }
 
-func (api *RelayAPI) startKnownValidatorUpdates() {
+func (api *RelayAPI) startKnownValidatorUpdates(ctx context.Context) {
 	for {
 		// Wait for one epoch (at the beginning, because initially the validators have already been queried)
 		time.Sleep(common.DurationPerEpoch / 2)
 
 		// Refresh known validators
-		cnt, err := api.datastore.RefreshKnownValidators()
+		cnt, err := api.datastore.RefreshKnownValidators(ctx)
 		if err != nil {
 			api.log.WithError(err).Error("error getting known validators")
 		} else {
@@ -438,7 +433,7 @@ func (api *RelayAPI) startKnownValidatorUpdates() {
 			}
 		}
 
-		api.updateStatusHTMLData()
+		api.updateStatusHTMLData(ctx)
 	}
 }
 
@@ -465,8 +460,8 @@ func (api *RelayAPI) RespondOKEmpty(w http.ResponseWriter) {
 	api.RespondOK(w, NilResponse)
 }
 
-func (api *RelayAPI) updateStatusHTMLData() {
-	_numRegistered, err := api.datastore.NumRegisteredValidators()
+func (api *RelayAPI) updateStatusHTMLData(ctx context.Context) {
+	_numRegistered, err := api.datastore.NumRegisteredValidators(ctx)
 	if err != nil {
 		api.log.WithError(err).Error("error getting number of registered validators in updateStatusHTMLData")
 	}
@@ -516,6 +511,7 @@ func (api *RelayAPI) handleStatus(w http.ResponseWriter, req *http.Request) {
 // ---------------
 
 func (api *RelayAPI) handleRegisterValidator(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	log := api.log.WithField("method", "registerValidator")
 	// log.Info("registerValidator")
 
@@ -570,7 +566,7 @@ func (api *RelayAPI) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 		}
 
 		// Check for a previous registration timestamp
-		prevTimestamp, err := api.datastore.GetValidatorRegistrationTimestamp(registration.Message.Pubkey.PubkeyHex())
+		prevTimestamp, err := api.datastore.GetValidatorRegistrationTimestamp(ctx, registration.Message.Pubkey.PubkeyHex())
 		if err != nil {
 			log.WithError(err).Infof("error getting last registration timestamp for %s", registration.Message.Pubkey.PubkeyHex())
 		}
@@ -736,7 +732,7 @@ func (api *RelayAPI) handleBuilderGetValidators(w http.ResponseWriter, req *http
 
 func (api *RelayAPI) handleSubmitNewBlock(w http.ResponseWriter, req *http.Request) {
 	log := api.log.WithField("method", "submitNewBlock")
-
+	ctx := req.Context()
 	payload := new(types.BuilderSubmitBlockRequest)
 	if err := json.NewDecoder(req.Body).Decode(payload); err != nil {
 		log.WithError(err).Error("could not decode payload")
@@ -812,7 +808,7 @@ func (api *RelayAPI) handleSubmitNewBlock(w http.ResponseWriter, req *http.Reque
 	}).Info("received block from builder")
 
 	// Update HTML data
-	go api.updateStatusHTMLData()
+	go api.updateStatusHTMLData(ctx)
 
 	// Respond with OK (TODO: proper response format)
 	api.RespondOKEmpty(w)

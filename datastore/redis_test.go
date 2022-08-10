@@ -120,4 +120,5 @@ func TestRedisProposerDuties(t *testing.T) {
 
 	require.Equal(t, 1, len(duties2))
 	require.Equal(t, duties[0].Entry.Message.FeeRecipient, duties2[0].Entry.Message.FeeRecipient)
+
 }

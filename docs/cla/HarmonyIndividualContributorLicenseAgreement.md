@@ -1,11 +1,11 @@
 ## Harmony Individual Contributor License Agreement
 
-Thank you for your interest in contributing to the Flashbots ("We" or "Us") mev-boost-relay repository.
+Thank you for your interest in contributing to the Flashbots mev-boost-relay repository ("We" or "Us").
 This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this document effective, please fill out the form below. This is a legally binding document, so please read it carefully before agreeing to it. The Agreement may cover more than one software project managed by Us.
 
 # 1. Definitions
  "You" means the individual who Submits a Contribution to Us.
- 
+
  "Contribution" means any work of authorship that is Submitted by You to Us in which You own or
 assert ownership of the Copyright. If You do not own the Copyright in the entire work of authorship,
 please cancel this process, and direct the Copyright owner to sign this agreement.
@@ -25,11 +25,11 @@ improving the Material, but excluding communication that is conspicuously marked
 designated in writing by You as "Not a Contribution."
 
  "Submission Date" means the date on which You Submit a Contribution to Us.
- 
+
  "Effective Date" means the date You execute this Agreement or the date You first Submit a Contribution to Us, whichever is earlier.
 
  "Media" means any portion of a Contribution which is not software.
- 
+
 # 2. Grant of Rights
 
 2.1 Copyright License
@@ -55,13 +55,11 @@ compliance with Section 2.3.
 
 2.3 Outbound License
 
-Based on the grant of rights in Sections 2.1 and 2.2, if We include Your Contribution in a
-Material, We may license the Contribution under any license, including copyleft, permissive,
-commercial, or proprietary licenses. As a condition on the exercise of this right, We agree to also
-license the Contribution under the terms of the license or licenses which We are using for the Material
-on the Submission Date.
-
-In addition, We may use other licenses for Media in the Contribution (including any right to adopt any future version of a license if permitted).
+As a condition on the grant of rights in Sections 2.1 and 2.2, We agree to license the
+Contribution only under the terms of the license or licenses which We are using on the Submission
+Date for the Material or any licenses which are approved by the Open Source Initiative on or after the
+Effective Date, including both permissive and copyleft licenses, whether or not such licenses are
+subsequently disapproved (including any right to adopt any future version of a license if permitted).
 
 2.4 Moral Rights. If moral rights apply to the Contribution, to the maximum extent permitted by law,
 You waive and agree not to assert such moral rights against Us or our successors in interest, or any of
@@ -69,6 +67,7 @@ our licensees, either direct or indirect.
 
 2.5 Our Rights. You acknowledge that We are not obligated to use Your Contribution as part of the
 Material and may decide to include any Contribution We consider appropriate.
+
 2.6 Reservation of Rights. Any rights not expressly licensed under this section are expressly reserved
 by You.
 
